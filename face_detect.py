@@ -1,46 +1,57 @@
 import cv2
+import dlib
+import numpy as np
 
-casc_path_face = "./resources/face_detect/haarcascade_frontalface_default.xml"
+class FaceDetectionHAAR(object):
+    def __init__(self):
+        self.casc_path = "./resources/face_detect/haarcascade_frontalface_default.xml"
+        self.casc = cv2.CascadeClassifier(self.casc_path)
 
-casc_face = cv2.CascadeClassifier(casc_path_face)
+    def detect_faces(self, frame):
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-# Start the camera twice to work around
-# "error: ..\..\..\modules\imgproc\src\color.cpp:7456: error: (-215)
-# scn == 3 || scn == 4 in function cv::ipp_cvtColor"
-camera_capture = cv2.VideoCapture(0)
-camera_capture.release()
-camera_capture = cv2.VideoCapture(0)
+        faces = self.casc.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=10,
+            minSize=(30, 30)
+        )
 
-detect_eyes = True
-detect_smile = True
+        for (x, y, w, h) in faces:
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 255, 0), 2)
 
-while True:
-    if not camera_capture.isOpened():
-        print('Unable to load camera.')
-        break
+        return frame
 
-    # Capture frame-by-frame
-    ret, frame = camera_capture.read()
+class FaceDetectionDNN(object):
+    def __init__(self):
+        modelFile = "./resources/face_detect/res10_300x300_ssd_iter_140000_fp16.caffemodel"
+        configFile = "./resources/face_detect/deploy.prototxt"
+        self.net = cv2.dnn.readNetFromCaffe(configFile, modelFile)
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    def detect_faces(self, frame, shape, thresh):
+        blob = cv2.dnn.blobFromImage(frame, 1.0, (300, 300), [104, 117, 123], False, False)
 
-    faces = casc_face.detectMultiScale(
-        gray,
-        scaleFactor=1.1,
-        minNeighbors=10,
-        minSize=(30, 30)
-    )
-    # Draw a rectangle around the faces
+        self.net.setInput(blob)
+        detections = self.net.forward()
+        bboxes = []
+        for i in range(detections.shape[2]):
+            confidence = detections[0, 0, i, 2]
+            if confidence > thresh:
+                x1 = int(detections[0, 0, i, 3] * shape[1])
+                y1 = int(detections[0, 0, i, 4] * shape[0])
+                x2 = int(detections[0, 0, i, 5] * shape[1])
+                y2 = int(detections[0, 0, i, 6] * shape[0])
+                #cv2.rectangle(frame, (x1, y1), (x2, y2), (255,255,0),2)
+                bboxes.append([x1, y1, x2-x1, y2-y1])
+        return bboxes
 
-    for (x, y, w, h) in faces:
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 255, 0), 2)
+    def cut_face(self, frame, bb):
+        img = np.zeros(frame.shape, dtype=np.uint8)
+        (x,y,w,h) = bb
+        return frame[y:y+h, x:x+w]
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
 
-    # Display the resulting frame
-    cv2.imshow('Video', frame)
+class FaceDetectionDLIB(object):
 
-# When everything is done, release the capture
-camera_capture.release()
-cv2.destroyAllWindows()
+    def detect_faces(self, frame):
+       pass
